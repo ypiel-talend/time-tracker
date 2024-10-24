@@ -8,6 +8,8 @@ import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 import javax.swing.table.AbstractTableModel;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
@@ -16,6 +18,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
+import java.net.URI;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -61,6 +64,9 @@ public class TimeTrackerApp extends JFrame {
 
         // Configurer le comportement d'édition du tableau des tickets
         ticketTable.setSurrendersFocusOnKeystroke(true);
+
+        // Ajouter un MouseListener pour détecter le clic sur l'emoji œil
+        ticketTable.addMouseListener(new TicketMouseAdapter());
 
         JScrollPane ticketScrollPane = new JScrollPane(ticketTable);
 
@@ -202,6 +208,7 @@ public class TimeTrackerApp extends JFrame {
             for (Ticket ticket : ticketTableModel.tickets) {
                 TicketState ts = new TicketState();
                 ts.jiraId = ticket.jiraId;
+                ts.url = ticket.url;
                 ts.status = ticket.status.name();
                 ts.comment = ticket.comment;
                 ts.elapsedTime = ticket.elapsedTime;
@@ -244,7 +251,8 @@ public class TimeTrackerApp extends JFrame {
                 this.currentDate = LocalDate.parse(appState.currentDate);
                 ticketTableModel.tickets.clear();
                 for (TicketState ts : appState.tickets) {
-                    Ticket ticket = new Ticket(ts.jiraId, ts.comment, TicketStatus.valueOf(ts.status), ticketTableModel);
+                    Ticket ticket = new Ticket(ts.jiraId, ts.url, ts.comment,
+                            TicketStatus.valueOf(ts.status), ticketTableModel);
                     ticket.elapsedTime = ts.elapsedTime;
                     // Restaurer la liste des todos
                     for (TodoState todoState : ts.todos) {
@@ -299,6 +307,7 @@ public class TimeTrackerApp extends JFrame {
 
     static class TicketState {
         String jiraId;
+        String url;
         String status;
         String comment;
         long elapsedTime;
@@ -322,7 +331,7 @@ public class TimeTrackerApp extends JFrame {
 
     // Modèle de table personnalisé pour les tickets
     class MyTicketTableModel extends AbstractTableModel {
-        private String[] columnNames = {"JIRA ID", "Statut", "Commentaire", "Durée"};
+        private String[] columnNames = {"JIRA ID", "Statut", "Commentaire", "Durée", "Lien"};
         private List<Ticket> tickets = new ArrayList<>();
         private boolean hideDone = false;
 
@@ -393,6 +402,8 @@ public class TimeTrackerApp extends JFrame {
                         return ticket.comment;
                     case 3:
                         return formatDuration(ticket.getElapsedTime());
+                    case 4:
+                        return ticket.url != null ? "👁️" : "";
                     default:
                         return null;
                 }
@@ -412,7 +423,7 @@ public class TimeTrackerApp extends JFrame {
             // Permettre l'édition de la dernière ligne vide et des colonnes statut et commentaire des tickets existants
             if (row == getFilteredTickets().size()) {
                 return col == 0 || col == 1 || col == 2;
-            } else if (col == 1 || col == 2) {
+            } else if (col == 0 || col == 1 || col == 2) {
                 return true;
             }
             return false;
@@ -424,13 +435,16 @@ public class TimeTrackerApp extends JFrame {
             if (row == filteredTickets.size()) {
                 // Édition de la ligne vide
                 if (col == 0) {
-                    String jiraId = (String) value;
-                    if (jiraId != null && !jiraId.trim().isEmpty()) {
+                    String input = (String) value;
+                    if (input != null && !input.trim().isEmpty()) {
+                        // Traiter l'entrée
+                        String jiraId = extractJiraId(input.trim());
+                        String url = extractJiraUrl(input.trim());
                         // Créer un nouveau ticket
                         String comment = (String) getValueAt(row, 2);
                         if (comment == null) comment = "";
                         TicketStatus status = TicketStatus.TODO;
-                        Ticket ticket = new Ticket(jiraId.trim(), comment.trim(), status, this);
+                        Ticket ticket = new Ticket(jiraId, url, comment.trim(), status, this);
                         tickets.add(ticket);
                         fireTableRowsInserted(tickets.size() - 1, tickets.size() - 1);
                     }
@@ -442,6 +456,13 @@ public class TimeTrackerApp extends JFrame {
                 // Édition d'un ticket existant
                 Ticket ticket = filteredTickets.get(row);
                 switch (col) {
+                    case 0:
+                        String input = (String) value;
+                        if (input != null && !input.trim().isEmpty()) {
+                            ticket.jiraId = extractJiraId(input.trim());
+                            ticket.url = extractJiraUrl(input.trim());
+                        }
+                        break;
                     case 1:
                         if (value instanceof TicketStatus) {
                             ticket.status = (TicketStatus) value;
@@ -471,11 +492,31 @@ public class TimeTrackerApp extends JFrame {
             long ss = seconds % 60;
             return String.format("%02d:%02d:%02d", hh, mm, ss);
         }
+
+        // Méthodes pour extraire l'ID Jira et l'URL
+        private String extractJiraId(String input) {
+            if (input.startsWith("http://") || input.startsWith("https://")) {
+                int lastSlash = input.lastIndexOf('/');
+                if (lastSlash != -1 && lastSlash < input.length() - 1) {
+                    return input.substring(lastSlash + 1);
+                }
+            }
+            return input;
+        }
+
+        private String extractJiraUrl(String input) {
+            if (input.startsWith("http://") || input.startsWith("https://")) {
+                return input;
+            }
+            // Si ce n'est pas une URL, retourner null ou construire une URL par défaut
+            return null;
+        }
     }
 
     // Classe Ticket
     class Ticket {
         String jiraId;
+        String url;
         TicketStatus status;
         String comment;
         long startTime = 0;
@@ -484,8 +525,9 @@ public class TimeTrackerApp extends JFrame {
         MyTicketTableModel tableModel;
         List<TodoItem> todoList = new ArrayList<>();
 
-        public Ticket(String jiraId, String comment, TicketStatus status, MyTicketTableModel tableModel) {
+        public Ticket(String jiraId, String url, String comment, TicketStatus status, MyTicketTableModel tableModel) {
             this.jiraId = jiraId;
+            this.url = url;
             this.comment = comment;
             this.status = status;
             this.tableModel = tableModel;
@@ -796,5 +838,27 @@ public class TimeTrackerApp extends JFrame {
             }
         }
     }
+
+    // MouseAdapter pour gérer le clic sur l'emoji œil
+    class TicketMouseAdapter extends MouseAdapter {
+        @Override
+        public void mouseClicked(MouseEvent e) {
+            int row = ticketTable.rowAtPoint(e.getPoint());
+            int column = ticketTable.columnAtPoint(e.getPoint());
+            List<Ticket> filteredTickets = ticketTableModel.getFilteredTickets();
+            if (row >= 0 && row < filteredTickets.size() && column == 4) {
+                Ticket ticket = filteredTickets.get(row);
+                if (ticket.url != null && !ticket.url.isEmpty()) {
+                    try {
+                        Desktop.getDesktop().browse(new URI(ticket.url));
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                    }
+                }
+            }
+        }
+    }
 }
+
+
 
