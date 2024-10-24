@@ -20,12 +20,18 @@ import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
 import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 public class TimeTrackerApp extends JFrame {
     private JTable ticketTable;
     private JTable todoTable;
@@ -43,7 +49,8 @@ public class TimeTrackerApp extends JFrame {
 
     // Pour la sauvegarde périodique
     private Timer saveTimer;
-    private static final String STATE_FILE = "time-tracker.json";
+    private static final String OUTPUT_FILE = "time-tracker.json";
+    private static final String OUTPUT_DIR = System.getProperty("time-tracker.output_dir",System.getProperty("user.home") + File.separator + "TimeTracker");
 
     // Variable pour stocker le ticket précédemment sélectionné
     private Ticket previousSelectedTicket = null;
@@ -199,6 +206,12 @@ public class TimeTrackerApp extends JFrame {
         setVisible(true);
     }
 
+    private void error(String message, Exception e) {
+        log.error(message, e);
+        JOptionPane.showMessageDialog(this, message+"\n"+e.getMessage(), "Erreur", JOptionPane.ERROR_MESSAGE);
+        System.exit(1);
+    }
+
     private void removeSelectedTicket() {
         int selectedRow = ticketTable.getSelectedRow();
         if (selectedRow >= 0) {
@@ -261,7 +274,8 @@ public class TimeTrackerApp extends JFrame {
     }
 
     private void saveState() {
-        try (Writer writer = new FileWriter(STATE_FILE)) {
+        String outputFilePath = getOutputFilePath();
+        try (Writer writer = new FileWriter(outputFilePath)) {
             Gson gson = new GsonBuilder().setPrettyPrinting().create();
             AppState appState = new AppState();
             appState.dayElapsedTime = dayElapsedTime;
@@ -315,10 +329,28 @@ public class TimeTrackerApp extends JFrame {
         }
     }
 
+    private String getOutputFilePath() {
+        // Créer le répertoire de sortie s'il n'existe pas
+        log.debug("Time-tracker output directory: {}", OUTPUT_DIR);
+        Path outputDir = Paths.get(OUTPUT_DIR);
+        if (Files.notExists(outputDir)) {
+            try {
+                Files.createDirectories(outputDir);
+            } catch (IOException e) {
+                error("Erreur lors de la création du répertoire de sortie.", e);
+            }
+        }
+
+        String outputFilePath = OUTPUT_DIR + File.separator + OUTPUT_FILE;
+        log.info("Time-tracker output file: {}", outputFilePath);
+        return outputFilePath;
+    }
+
     private void loadState() {
-        File file = new File(STATE_FILE);
+        String outputFilePath = getOutputFilePath();
+        File file = new File(outputFilePath);
         if (file.exists()) {
-            try (Reader reader = new FileReader(STATE_FILE)) {
+            try (Reader reader = new FileReader(file)) {
                 Gson gson = new Gson();
                 AppState appState = gson.fromJson(reader, AppState.class);
                 // Restaurer l'état
