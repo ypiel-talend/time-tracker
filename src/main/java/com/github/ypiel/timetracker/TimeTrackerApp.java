@@ -4,7 +4,6 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 
 import javax.swing.*;
-import javax.swing.Timer;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 import javax.swing.table.AbstractTableModel;
@@ -20,17 +19,6 @@ import java.io.Writer;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
-
-import javax.swing.*;
-import javax.swing.event.*;
-import javax.swing.table.AbstractTableModel;
-import java.awt.*;
-import java.awt.event.*;
-import java.io.*;
-import java.time.*;
-import java.util.*;
-
-import com.google.gson.*;
 
 public class TimeTrackerApp extends JFrame {
     private JTable ticketTable;
@@ -50,6 +38,9 @@ public class TimeTrackerApp extends JFrame {
     // Pour la sauvegarde périodique
     private Timer saveTimer;
     private static final String STATE_FILE = "state.json";
+
+    // Variable pour stocker le ticket précédemment sélectionné
+    private Ticket previousSelectedTicket = null;
 
     public TimeTrackerApp() {
         super("Time Tracker");
@@ -614,6 +605,8 @@ public class TimeTrackerApp extends JFrame {
         }
 
         public void setTodoItems(List<TodoItem> items) {
+            // Avant de changer les todos, mettre en pause les todos actuels
+            pauseAll();
             todoItems = items;
             // Définir le modèle de table pour chaque TodoItem
             for (TodoItem item : todoItems) {
@@ -757,6 +750,14 @@ public class TimeTrackerApp extends JFrame {
             if (!e.getValueIsAdjusting() && !isPaused) {
                 int selectedRow = ticketTable.getSelectedRow();
                 List<Ticket> filteredTickets = ticketTableModel.getFilteredTickets();
+
+                // Mettre en pause tous les todos du ticket précédent
+                if (previousSelectedTicket != null) {
+                    for (TodoItem todo : previousSelectedTicket.todoList) {
+                        todo.pause();
+                    }
+                }
+
                 if (selectedRow >= 0 && selectedRow < filteredTickets.size()) {
                     // Mettre en pause tous les tickets
                     ticketTableModel.pauseAll();
@@ -765,9 +766,14 @@ public class TimeTrackerApp extends JFrame {
                     selectedTicket.resume();
                     // Mettre à jour la liste des todos
                     todoTableModel.setTodoItems(selectedTicket.todoList);
+                    // Mettre en pause tous les todos du nouveau ticket
+                    todoTableModel.pauseAll();
+                    // Mettre à jour le ticket précédent
+                    previousSelectedTicket = selectedTicket;
                 } else {
                     // Aucun ticket valide sélectionné
                     todoTableModel.setTodoItems(new ArrayList<>());
+                    previousSelectedTicket = null;
                 }
             }
         }
@@ -791,3 +797,4 @@ public class TimeTrackerApp extends JFrame {
         }
     }
 }
+
