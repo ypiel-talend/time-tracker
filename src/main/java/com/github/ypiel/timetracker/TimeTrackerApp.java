@@ -7,6 +7,7 @@ import javax.swing.*;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 import javax.swing.table.AbstractTableModel;
+import javax.swing.table.DefaultTableCellRenderer;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -45,11 +46,17 @@ public class TimeTrackerApp extends JFrame {
     // Variable pour stocker le ticket précédemment sélectionné
     private Ticket previousSelectedTicket = null;
 
+    // Icone de l'œil pour le lien
+    private static ImageIcon eyeIcon;
+
     public TimeTrackerApp() {
         super("Time Tracker");
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setSize(1000, 600);
         setLocationRelativeTo(null);
+
+        // Charger l'icône de l'œil
+        eyeIcon = new ImageIcon(getClass().getResource("/icons/eye.png"));
 
         // Initialiser les composants
         ticketTableModel = new MyTicketTableModel();
@@ -59,13 +66,16 @@ public class TimeTrackerApp extends JFrame {
         JComboBox<TicketStatus> ticketStatusComboBox = new JComboBox<>(TicketStatus.values());
         ticketTable.getColumnModel().getColumn(1).setCellEditor(new DefaultCellEditor(ticketStatusComboBox));
 
+        // Configurer le renderer pour la colonne "Lien"
+        ticketTable.getColumnModel().getColumn(4).setCellRenderer(new LinkCellRenderer());
+
         // Ajouter un ListSelectionListener au tableau des tickets
         ticketTable.getSelectionModel().addListSelectionListener(new TicketSelectionHandler());
 
         // Configurer le comportement d'édition du tableau des tickets
         ticketTable.setSurrendersFocusOnKeystroke(true);
 
-        // Ajouter un MouseListener pour détecter le clic sur l'emoji œil
+        // Ajouter un MouseListener pour détecter le clic sur l'icône d'œil
         ticketTable.addMouseListener(new TicketMouseAdapter());
 
         JScrollPane ticketScrollPane = new JScrollPane(ticketTable);
@@ -403,7 +413,7 @@ public class TimeTrackerApp extends JFrame {
                     case 3:
                         return formatDuration(ticket.getElapsedTime());
                     case 4:
-                        return ticket.url != null ? "👁️" : "";
+                        return ticket.url != null ? eyeIcon : null;
                     default:
                         return null;
                 }
@@ -480,6 +490,8 @@ public class TimeTrackerApp extends JFrame {
         public Class<?> getColumnClass(int columnIndex) {
             if (columnIndex == 1) {
                 return TicketStatus.class;
+            } else if (columnIndex == 4) {
+                return ImageIcon.class;
             } else {
                 return String.class;
             }
@@ -839,7 +851,23 @@ public class TimeTrackerApp extends JFrame {
         }
     }
 
-    // MouseAdapter pour gérer le clic sur l'emoji œil
+    // Renderer personnalisé pour la colonne "Lien"
+    class LinkCellRenderer extends DefaultTableCellRenderer {
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value,
+                                                       boolean isSelected, boolean hasFocus,
+                                                       int row, int column) {
+            if (value instanceof ImageIcon) {
+                JLabel label = new JLabel((ImageIcon) value);
+                label.setHorizontalAlignment(CENTER);
+                return label;
+            } else {
+                return super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+            }
+        }
+    }
+
+    // MouseAdapter pour gérer le clic sur l'icône d'œil
     class TicketMouseAdapter extends MouseAdapter {
         @Override
         public void mouseClicked(MouseEvent e) {
@@ -859,6 +887,3 @@ public class TimeTrackerApp extends JFrame {
         }
     }
 }
-
-
-
