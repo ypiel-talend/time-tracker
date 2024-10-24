@@ -23,7 +23,9 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -49,7 +51,8 @@ public class TimeTrackerApp extends JFrame {
 
     // Pour la sauvegarde périodique
     private Timer saveTimer;
-    private static final String OUTPUT_FILE = "time-tracker.json";
+    private static final String OUTPUT_FILE = "time-tracker";
+    private static final String EXT = ".json";
     private static final String OUTPUT_DIR = System.getProperty("time-tracker.output_dir",System.getProperty("user.home") + File.separator + "TimeTracker");
 
     // Variable pour stocker le ticket précédemment sélectionné
@@ -275,7 +278,7 @@ public class TimeTrackerApp extends JFrame {
 
     private void saveState() {
         String outputFilePath = getOutputFilePath();
-        try (Writer writer = new FileWriter(outputFilePath)) {
+        try (Writer writer = new FileWriter(outputFilePath+EXT)) {
             Gson gson = new GsonBuilder().setPrettyPrinting().create();
             AppState appState = new AppState();
             appState.dayElapsedTime = dayElapsedTime;
@@ -324,9 +327,18 @@ public class TimeTrackerApp extends JFrame {
             appState.selectedTodoIndex = todoTable.getSelectedRow();
             gson.toJson(appState, writer);
             System.out.println("État de l'application sauvegardé en JSON.");
+
+            // Do a daily backup
+            Files.copy(Paths.get(outputFilePath+EXT), Paths.get(outputFilePath+"_"+getYearAndDay()+EXT), StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException ex) {
             ex.printStackTrace();
         }
+    }
+
+    public static String getYearAndDay() {
+        LocalDate date = LocalDate.now();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-DDD");
+        return date.format(formatter);
     }
 
     private String getOutputFilePath() {
@@ -342,12 +354,12 @@ public class TimeTrackerApp extends JFrame {
         }
 
         String outputFilePath = OUTPUT_DIR + File.separator + OUTPUT_FILE;
-        log.info("Time-tracker output file: {}", outputFilePath);
+        log.info("Time-tracker output file: {}", outputFilePath+EXT);
         return outputFilePath;
     }
 
     private void loadState() {
-        String outputFilePath = getOutputFilePath();
+        String outputFilePath = getOutputFilePath()+EXT;
         File file = new File(outputFilePath);
         if (file.exists()) {
             try (Reader reader = new FileReader(file)) {
