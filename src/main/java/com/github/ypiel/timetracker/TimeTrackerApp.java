@@ -22,7 +22,9 @@ import java.io.Writer;
 import java.net.URI;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class TimeTrackerApp extends JFrame {
     private JTable ticketTable;
@@ -49,10 +51,14 @@ public class TimeTrackerApp extends JFrame {
     // Icone de l'œil pour le lien
     private static ImageIcon eyeIcon;
 
+    // Modèles de tables pour les durées quotidiennes du ticket et du todo sélectionnés
+    private TicketDateDurationTableModel ticketDateDurationTableModel;
+    private TodoDateDurationTableModel todoDateDurationTableModel;
+
     public TimeTrackerApp() {
         super("Time Tracker");
         setDefaultCloseOperation(EXIT_ON_CLOSE);
-        setSize(1000, 600);
+        setSize(1000, 800);
         setLocationRelativeTo(null);
 
         // Charger l'icône de l'œil
@@ -86,23 +92,20 @@ public class TimeTrackerApp extends JFrame {
         JPanel ticketTopPanel = new JPanel(new BorderLayout());
         ticketTopPanel.add(hideTicketDoneCheckBox, BorderLayout.WEST);
 
+        // Panneau pour les durées quotidiennes du ticket sélectionné
+        ticketDateDurationTableModel = new TicketDateDurationTableModel();
+        JTable ticketDateDurationTable = new JTable(ticketDateDurationTableModel);
+        JScrollPane ticketDateDurationScrollPane = new JScrollPane(ticketDateDurationTable);
+
+        // Split pane vertical pour le panneau des tickets
+        JSplitPane ticketSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        ticketSplitPane.setTopComponent(ticketScrollPane);
+        ticketSplitPane.setBottomComponent(ticketDateDurationScrollPane);
+        ticketSplitPane.setDividerLocation(300);
+
         JPanel ticketPanel = new JPanel(new BorderLayout());
         ticketPanel.add(ticketTopPanel, BorderLayout.NORTH);
-        ticketPanel.add(ticketScrollPane, BorderLayout.CENTER);
-
-        pauseButton = new JButton("Pause");
-        pauseButton.setBackground(Color.RED);
-        pauseButton.setForeground(Color.WHITE);
-        pauseButton.setFont(new Font("Arial", Font.BOLD, 24));
-        pauseButton.addActionListener(e -> togglePause());
-
-        dayDurationLabel = new JLabel("Durée de travail aujourd'hui : 00:00:00");
-        dayDurationLabel.setFont(new Font("Arial", Font.PLAIN, 18));
-
-        JPanel bottomPanel = new JPanel();
-        bottomPanel.setLayout(new BorderLayout());
-        bottomPanel.add(pauseButton, BorderLayout.CENTER);
-        bottomPanel.add(dayDurationLabel, BorderLayout.EAST);
+        ticketPanel.add(ticketSplitPane, BorderLayout.CENTER);
 
         // Panneau de droite pour la liste des todos
         todoTableModel = new MyTodoTableModel();
@@ -121,9 +124,20 @@ public class TimeTrackerApp extends JFrame {
         JPanel todoTopPanel = new JPanel(new BorderLayout());
         todoTopPanel.add(hideDoneCheckBox, BorderLayout.WEST);
 
+        // Panneau pour les durées quotidiennes du todo sélectionné
+        todoDateDurationTableModel = new TodoDateDurationTableModel();
+        JTable todoDateDurationTable = new JTable(todoDateDurationTableModel);
+        JScrollPane todoDateDurationScrollPane = new JScrollPane(todoDateDurationTable);
+
+        // Split pane vertical pour le panneau des todos
+        JSplitPane todoSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        todoSplitPane.setTopComponent(todoScrollPane);
+        todoSplitPane.setBottomComponent(todoDateDurationScrollPane);
+        todoSplitPane.setDividerLocation(300);
+
         JPanel todoPanel = new JPanel(new BorderLayout());
         todoPanel.add(todoTopPanel, BorderLayout.NORTH);
-        todoPanel.add(todoScrollPane, BorderLayout.CENTER);
+        todoPanel.add(todoSplitPane, BorderLayout.CENTER);
 
         // Ajouter un ListSelectionListener au tableau des todos
         todoTable.getSelectionModel().addListSelectionListener(new TodoSelectionHandler());
@@ -131,6 +145,20 @@ public class TimeTrackerApp extends JFrame {
         // Split pane pour contenir les deux tableaux
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, ticketPanel, todoPanel);
         splitPane.setDividerLocation(500);
+
+        pauseButton = new JButton("Pause");
+        pauseButton.setBackground(Color.RED);
+        pauseButton.setForeground(Color.WHITE);
+        pauseButton.setFont(new Font("Arial", Font.BOLD, 24));
+        pauseButton.addActionListener(e -> togglePause());
+
+        dayDurationLabel = new JLabel("Durée de travail aujourd'hui : 00:00:00");
+        dayDurationLabel.setFont(new Font("Arial", Font.PLAIN, 18));
+
+        JPanel bottomPanel = new JPanel();
+        bottomPanel.setLayout(new BorderLayout());
+        bottomPanel.add(pauseButton, BorderLayout.CENTER);
+        bottomPanel.add(dayDurationLabel, BorderLayout.EAST);
 
         getContentPane().setLayout(new BorderLayout());
         getContentPane().add(splitPane, BorderLayout.CENTER);
@@ -225,6 +253,11 @@ public class TimeTrackerApp extends JFrame {
                 if (!isPaused && ticket.timer.isRunning()) {
                     ts.elapsedTime += System.currentTimeMillis() - ticket.startTime;
                 }
+                // Sauvegarder dailyTimeSpent
+                ts.dailyTimeSpent = new HashMap<>();
+                for (Map.Entry<LocalDate, Long> entry : ticket.dailyTimeSpent.entrySet()) {
+                    ts.dailyTimeSpent.put(entry.getKey().toString(), entry.getValue());
+                }
                 // Sauvegarder la liste des todos
                 ts.todos = new ArrayList<>();
                 for (TodoItem todo : ticket.todoList) {
@@ -235,6 +268,11 @@ public class TimeTrackerApp extends JFrame {
                     todoState.elapsedTime = todo.elapsedTime;
                     if (!isPaused && todo.timer != null && todo.timer.isRunning()) {
                         todoState.elapsedTime += System.currentTimeMillis() - todo.startTime;
+                    }
+                    // Sauvegarder dailyTimeSpent
+                    todoState.dailyTimeSpent = new HashMap<>();
+                    for (Map.Entry<LocalDate, Long> entry : todo.dailyTimeSpent.entrySet()) {
+                        todoState.dailyTimeSpent.put(entry.getKey().toString(), entry.getValue());
                     }
                     ts.todos.add(todoState);
                 }
@@ -264,6 +302,13 @@ public class TimeTrackerApp extends JFrame {
                     Ticket ticket = new Ticket(ts.jiraId, ts.url, ts.comment,
                             TicketStatus.valueOf(ts.status), ticketTableModel);
                     ticket.elapsedTime = ts.elapsedTime;
+                    // Restaurer dailyTimeSpent
+                    if (ts.dailyTimeSpent != null) {
+                        for (Map.Entry<String, Long> entry : ts.dailyTimeSpent.entrySet()) {
+                            LocalDate date = LocalDate.parse(entry.getKey());
+                            ticket.dailyTimeSpent.put(date, entry.getValue());
+                        }
+                    }
                     // Restaurer la liste des todos
                     for (TodoState todoState : ts.todos) {
                         TodoItem todo = new TodoItem(
@@ -271,6 +316,13 @@ public class TimeTrackerApp extends JFrame {
                                 todoState.title,
                                 todoState.comment);
                         todo.elapsedTime = todoState.elapsedTime;
+                        // Restaurer dailyTimeSpent
+                        if (todoState.dailyTimeSpent != null) {
+                            for (Map.Entry<String, Long> entry : todoState.dailyTimeSpent.entrySet()) {
+                                LocalDate date = LocalDate.parse(entry.getKey());
+                                todo.dailyTimeSpent.put(date, entry.getValue());
+                            }
+                        }
                         todo.setTableModel(todoTableModel);
                         ticket.todoList.add(todo);
                     }
@@ -321,6 +373,7 @@ public class TimeTrackerApp extends JFrame {
         String status;
         String comment;
         long elapsedTime;
+        Map<String, Long> dailyTimeSpent;
         List<TodoState> todos;
     }
 
@@ -329,6 +382,7 @@ public class TimeTrackerApp extends JFrame {
         String title;
         String comment;
         long elapsedTime;
+        Map<String, Long> dailyTimeSpent;
     }
 
     // Enum pour le statut des tickets
@@ -537,6 +591,9 @@ public class TimeTrackerApp extends JFrame {
         MyTicketTableModel tableModel;
         List<TodoItem> todoList = new ArrayList<>();
 
+        Map<LocalDate, Long> dailyTimeSpent = new HashMap<>();
+        LocalDate currentDate;
+
         public Ticket(String jiraId, String url, String comment, TicketStatus status, MyTicketTableModel tableModel) {
             this.jiraId = jiraId;
             this.url = url;
@@ -552,6 +609,7 @@ public class TimeTrackerApp extends JFrame {
 
         public void resume() {
             startTime = System.currentTimeMillis();
+            currentDate = LocalDate.now();
             if (timer == null) {
                 initTimer();
             }
@@ -560,7 +618,10 @@ public class TimeTrackerApp extends JFrame {
 
         public void pause() {
             if (timer != null && timer.isRunning()) {
-                elapsedTime += System.currentTimeMillis() - startTime;
+                long elapsed = System.currentTimeMillis() - startTime;
+                elapsedTime += elapsed;
+                // Ajouter le temps écoulé au temps quotidien
+                dailyTimeSpent.merge(currentDate, elapsed, Long::sum);
                 timer.stop();
             }
         }
@@ -573,10 +634,18 @@ public class TimeTrackerApp extends JFrame {
             }
         }
 
+        public long getElapsedTimeOnDate(LocalDate date) {
+            return dailyTimeSpent.getOrDefault(date, 0L);
+        }
+
         private void updateDuration() {
             int index = tableModel.tickets.indexOf(this);
             if (index != -1) {
                 tableModel.fireTableRowsUpdated(index, index);
+            }
+            // Mettre à jour le modèle des durées quotidiennes
+            if (ticketTable.getSelectedRow() == index) {
+                ticketDateDurationTableModel.setTicket(this);
             }
         }
     }
@@ -599,6 +668,9 @@ public class TimeTrackerApp extends JFrame {
         transient Timer timer;
         transient MyTodoTableModel tableModel;
 
+        Map<LocalDate, Long> dailyTimeSpent = new HashMap<>();
+        LocalDate currentDate;
+
         public TodoItem(TodoStatus status, String title, String comment) {
             this.status = status;
             this.title = title;
@@ -616,6 +688,7 @@ public class TimeTrackerApp extends JFrame {
 
         public void resume() {
             startTime = System.currentTimeMillis();
+            currentDate = LocalDate.now();
             if (timer == null) {
                 initTimer();
             }
@@ -624,7 +697,10 @@ public class TimeTrackerApp extends JFrame {
 
         public void pause() {
             if (timer != null && timer.isRunning()) {
-                elapsedTime += System.currentTimeMillis() - startTime;
+                long elapsed = System.currentTimeMillis() - startTime;
+                elapsedTime += elapsed;
+                // Ajouter le temps écoulé au temps quotidien
+                dailyTimeSpent.merge(currentDate, elapsed, Long::sum);
                 timer.stop();
             }
         }
@@ -637,11 +713,19 @@ public class TimeTrackerApp extends JFrame {
             }
         }
 
+        public long getElapsedTimeOnDate(LocalDate date) {
+            return dailyTimeSpent.getOrDefault(date, 0L);
+        }
+
         private void updateDuration() {
             if (tableModel != null) {
                 int index = tableModel.getIndexOfTodoItem(this);
                 if (index != -1) {
                     tableModel.fireTableRowsUpdated(index, index);
+                }
+                // Mettre à jour le modèle des durées quotidiennes des todos
+                if (todoTable.getSelectedRow() == index) {
+                    todoDateDurationTableModel.setTodoItem(this);
                 }
             }
         }
@@ -667,6 +751,8 @@ public class TimeTrackerApp extends JFrame {
                 item.setTableModel(this);
             }
             fireTableDataChanged();
+            // Vider le modèle des durées quotidiennes des todos
+            todoDateDurationTableModel.setTodoItem(null);
         }
 
         public void pauseAll() {
@@ -797,6 +883,116 @@ public class TimeTrackerApp extends JFrame {
         }
     }
 
+    // Modèle de table pour les durées quotidiennes du ticket sélectionné
+    class TicketDateDurationTableModel extends AbstractTableModel {
+        private String[] columnNames = {"Date", "Durée"};
+        private List<LocalDate> dates = new ArrayList<>();
+        private List<Long> durations = new ArrayList<>();
+
+        public void setTicket(Ticket ticket) {
+            dates.clear();
+            durations.clear();
+            if (ticket != null) {
+                for (Map.Entry<LocalDate, Long> entry : ticket.dailyTimeSpent.entrySet()) {
+                    dates.add(entry.getKey());
+                    durations.add(entry.getValue());
+                }
+            }
+            fireTableDataChanged();
+        }
+
+        @Override
+        public int getRowCount() {
+            return dates.size();
+        }
+
+        @Override
+        public int getColumnCount() {
+            return columnNames.length;
+        }
+
+        @Override
+        public Object getValueAt(int rowIndex, int columnIndex) {
+            if (columnIndex == 0) {
+                return dates.get(rowIndex).toString();
+            } else if (columnIndex == 1) {
+                return formatDuration(durations.get(rowIndex));
+            }
+            return null;
+        }
+
+        @Override
+        public String getColumnName(int column) {
+            return columnNames[column];
+        }
+
+        private String formatDuration(long millis) {
+            if (millis == 0) {
+                return "";
+            }
+            long seconds = millis / 1000;
+            long hh = seconds / 3600;
+            long mm = (seconds % 3600) / 60;
+            long ss = seconds % 60;
+            return String.format("%02d:%02d:%02d", hh, mm, ss);
+        }
+    }
+
+    // Modèle de table pour les durées quotidiennes du todo sélectionné
+    class TodoDateDurationTableModel extends AbstractTableModel {
+        private String[] columnNames = {"Date", "Durée"};
+        private List<LocalDate> dates = new ArrayList<>();
+        private List<Long> durations = new ArrayList<>();
+
+        public void setTodoItem(TodoItem todoItem) {
+            dates.clear();
+            durations.clear();
+            if (todoItem != null) {
+                for (Map.Entry<LocalDate, Long> entry : todoItem.dailyTimeSpent.entrySet()) {
+                    dates.add(entry.getKey());
+                    durations.add(entry.getValue());
+                }
+            }
+            fireTableDataChanged();
+        }
+
+        @Override
+        public int getRowCount() {
+            return dates.size();
+        }
+
+        @Override
+        public int getColumnCount() {
+            return columnNames.length;
+        }
+
+        @Override
+        public Object getValueAt(int rowIndex, int columnIndex) {
+            if (columnIndex == 0) {
+                return dates.get(rowIndex).toString();
+            } else if (columnIndex == 1) {
+                return formatDuration(durations.get(rowIndex));
+            }
+            return null;
+        }
+
+        @Override
+        public String getColumnName(int column) {
+            return columnNames[column];
+        }
+
+        private String formatDuration(long millis) {
+            if (millis == 0) {
+                return "";
+            }
+            long seconds = millis / 1000;
+            long hh = seconds / 3600;
+            long mm = (seconds % 3600) / 60;
+            long ss = seconds % 60;
+            return String.format("%02d:%02d:%02d", hh, mm, ss);
+        }
+    }
+
     // Gestionnaire de sélection pour les tickets
     class TicketSelectionHandler implements ListSelectionListener {
         @Override
@@ -820,14 +1016,25 @@ public class TimeTrackerApp extends JFrame {
                     selectedTicket.resume();
                     // Mettre à jour la liste des todos
                     todoTableModel.setTodoItems(selectedTicket.todoList);
+
                     // Mettre en pause tous les todos du nouveau ticket
                     todoTableModel.pauseAll();
                     // Mettre à jour le ticket précédent
                     previousSelectedTicket = selectedTicket;
+
+                    // Mettre à jour le modèle du tableau des durées quotidiennes du ticket sélectionné
+                    ticketDateDurationTableModel.setTicket(selectedTicket);
+
+                    // Vider le tableau des durées quotidiennes des todos
+                    todoDateDurationTableModel.setTodoItem(null);
                 } else {
                     // Aucun ticket valide sélectionné
                     todoTableModel.setTodoItems(new ArrayList<>());
                     previousSelectedTicket = null;
+
+                    // Vider les modèles des durées quotidiennes
+                    ticketDateDurationTableModel.setTicket(null);
+                    todoDateDurationTableModel.setTodoItem(null);
                 }
             }
         }
@@ -846,6 +1053,12 @@ public class TimeTrackerApp extends JFrame {
                     // Reprendre le chrono du todo sélectionné
                     TodoItem selectedTodo = filteredItems.get(selectedRow);
                     selectedTodo.resume();
+
+                    // Mettre à jour le modèle du tableau des durées quotidiennes du todo sélectionné
+                    todoDateDurationTableModel.setTodoItem(selectedTodo);
+                } else {
+                    // Aucun todo valide sélectionné
+                    todoDateDurationTableModel.setTodoItem(null);
                 }
             }
         }
@@ -860,6 +1073,10 @@ public class TimeTrackerApp extends JFrame {
             if (value instanceof ImageIcon) {
                 JLabel label = new JLabel((ImageIcon) value);
                 label.setHorizontalAlignment(CENTER);
+                if (isSelected) {
+                    label.setOpaque(true);
+                    label.setBackground(table.getSelectionBackground());
+                }
                 return label;
             } else {
                 return super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
