@@ -43,7 +43,7 @@ public class TimeTrackerApp extends JFrame {
 
     // Pour la sauvegarde périodique
     private Timer saveTimer;
-    private static final String STATE_FILE = "state.json";
+    private static final String STATE_FILE = "time-tracker.json";
 
     // Variable pour stocker le ticket précédemment sélectionné
     private Ticket previousSelectedTicket = null;
@@ -147,7 +147,7 @@ public class TimeTrackerApp extends JFrame {
         splitPane.setDividerLocation(500);
 
         pauseButton = new JButton("Pause");
-        pauseButton.setBackground(Color.RED);
+        pauseButton.setBackground(Color.GREEN.darker());
         pauseButton.setForeground(Color.WHITE);
         pauseButton.setFont(new Font("Arial", Font.BOLD, 24));
         pauseButton.addActionListener(e -> togglePause());
@@ -160,7 +160,17 @@ public class TimeTrackerApp extends JFrame {
         bottomPanel.add(pauseButton, BorderLayout.CENTER);
         bottomPanel.add(dayDurationLabel, BorderLayout.EAST);
 
+        JPanel topPanel = new JPanel();
+        topPanel.setLayout(new BorderLayout());
+        JButton removeTicketButton = new JButton("Remove Ticket");
+        removeTicketButton.addActionListener(e -> removeSelectedTicket());
+        JButton removeTodoButton = new JButton("Remove Todo");
+        removeTodoButton.addActionListener(e -> removeSelectedTodo());
+        topPanel.add(removeTicketButton, BorderLayout.WEST);
+        topPanel.add(removeTodoButton, BorderLayout.EAST);
+
         getContentPane().setLayout(new BorderLayout());
+        getContentPane().add(topPanel, BorderLayout.NORTH);
         getContentPane().add(splitPane, BorderLayout.CENTER);
         getContentPane().add(bottomPanel, BorderLayout.SOUTH);
 
@@ -183,7 +193,24 @@ public class TimeTrackerApp extends JFrame {
             }
         });
 
+        ImageIcon appIcon = new ImageIcon(getClass().getResource("/icons/clock.png"));
+        setIconImage(appIcon.getImage());
+
         setVisible(true);
+    }
+
+    private void removeSelectedTicket() {
+        int selectedRow = ticketTable.getSelectedRow();
+        if (selectedRow >= 0) {
+            ticketTableModel.removeTicket(selectedRow);
+        }
+    }
+
+    private void removeSelectedTodo() {
+        int selectedRow = todoTable.getSelectedRow();
+        if (selectedRow >= 0) {
+            todoTableModel.removeTodo(selectedRow);
+        }
     }
 
     private void togglePause() {
@@ -401,6 +428,15 @@ public class TimeTrackerApp extends JFrame {
 
         public MyTicketTableModel() {
             // Les tickets seront chargés depuis l'état
+        }
+
+        public void removeTicket(int rowIndex) {
+            List<Ticket> filteredTickets = getFilteredTickets();
+            if (rowIndex >= 0 && rowIndex < filteredTickets.size()) {
+                Ticket ticketToRemove = filteredTickets.get(rowIndex);
+                tickets.remove(ticketToRemove);
+                fireTableRowsDeleted(rowIndex, rowIndex);
+            }
         }
 
         public void addTicket(Ticket ticket) {
@@ -740,6 +776,15 @@ public class TimeTrackerApp extends JFrame {
         public void setHideDone(boolean hideDone) {
             this.hideDone = hideDone;
             fireTableDataChanged();
+        }
+
+        public void removeTodo(int rowIndex) {
+            List<TodoItem> filteredTodoItems = getFilteredItems();
+            if (rowIndex >= 0 && rowIndex < filteredTodoItems.size()) {
+                TodoItem todoToRemove = filteredTodoItems.get(rowIndex);
+                todoItems.remove(todoToRemove);
+                fireTableRowsDeleted(rowIndex, rowIndex);
+            }
         }
 
         public void setTodoItems(List<TodoItem> items) {
