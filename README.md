@@ -1,6 +1,8 @@
 # time-tracker
 A simple time tracker quickly developed with chatgpt-o1-preview.
 
+/!\It's more a POC since it doesn't work well... IA limitation...
+
 To build:
 ```shell
 $ mvn clean install
