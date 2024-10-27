@@ -1,19 +1,28 @@
 package com.github.ypiel.timetracker;
 
-import javax.swing.*;
-import javax.swing.table.*;
-import javax.swing.event.*;
-import java.awt.*;
-import java.awt.event.*;
-import java.io.*;
-import java.nio.file.*;
-import java.time.*;
-import java.time.format.DateTimeFormatter;
-import java.util.*;
-import java.util.List;
-
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import javax.swing.*;
+import javax.swing.table.DefaultTableModel;
+import javax.swing.table.TableCellRenderer;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.KeyEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class TimeTrackerApp extends JFrame {
 
@@ -101,7 +110,7 @@ public class TimeTrackerApp extends JFrame {
         DefaultTableModel model = new DefaultTableModel(columns, 0) {
             public boolean isCellEditable(int row, int column) {
                 // Permettre l'édition des colonnes ID et Description
-                return column == 0 || column == 1;
+                return column == 0 || column == 1 || column == 4 || column == 5;
             }
         };
         ticketTable.setModel(model);
@@ -161,7 +170,7 @@ public class TimeTrackerApp extends JFrame {
         DefaultTableModel model = new DefaultTableModel(columns, 0) {
             public boolean isCellEditable(int row, int column) {
                 // Permettre l'édition des colonnes Status et Description
-                return column == 0 || column == 1;
+                return column == 0 || column == 1 || column == 3;
             }
         };
         todoTable.setModel(model);
@@ -287,18 +296,22 @@ public class TimeTrackerApp extends JFrame {
     }
 
     private void setupTimers() {
+        final AtomicLong last = new AtomicLong(System.currentTimeMillis());
         durationTimer = new javax.swing.Timer(1000, e -> {
+            final long current = System.currentTimeMillis();
+            final long elapsedSecond = (current - last.get()) / 1000;
+            last.set(current);
             if (!isPaused) {
                 String today = LocalDate.now().format(DateTimeFormatter.ISO_DATE);
                 if (selectedTicket != null) {
-                    selectedTicket.incrementDuration();
-                    selectedTicket.incrementDurationForDay(today);
+                    selectedTicket.incrementDuration(elapsedSecond);
+                    selectedTicket.incrementDurationForDay(today, elapsedSecond);
                     updateTicketDuration();
                     updateTicketDailyDurationsTable();
                 }
                 if (selectedTodo != null) {
-                    selectedTodo.incrementDuration();
-                    selectedTodo.incrementDurationForDay(today);
+                    selectedTodo.incrementDuration(elapsedSecond);
+                    selectedTodo.incrementDurationForDay(today, elapsedSecond);
                     updateTodoDuration();
                     updateTodoDailyDurationsTable();
                 }
@@ -365,7 +378,8 @@ public class TimeTrackerApp extends JFrame {
         if (file.exists()) {
             try {
                 ObjectMapper mapper = new ObjectMapper();
-                tickets = mapper.readValue(file, new TypeReference<List<Ticket>>() {});
+                tickets = mapper.readValue(file, new TypeReference<List<Ticket>>() {
+                });
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -395,29 +409,63 @@ public class TimeTrackerApp extends JFrame {
             this.todoItems = new ArrayList<>();
         }
 
-        public void incrementDuration() {
-            duration++;
+        public void incrementDuration(long elapsedSeconds) {
+            duration += elapsedSeconds;
         }
 
-        public void incrementDurationForDay(String day) {
-            durationsPerDay.put(day, durationsPerDay.getOrDefault(day, 0L) + 1);
+        public void incrementDurationForDay(String day, long elapsedSeconds) {
+            durationsPerDay.put(day, durationsPerDay.getOrDefault(day, 0L) + elapsedSeconds);
         }
 
         // Getters et setters
 
-        public String getId() { return id; }
-        public String getDescription() { return description; }
-        public String getStatus() { return status; }
-        public long getDuration() { return duration; }
-        public Map<String, Long> getDurationsPerDay() { return durationsPerDay; }
-        public List<TodoItem> getTodoItems() { return todoItems; }
+        public String getId() {
+            return id;
+        }
 
-        public void setId(String id) { this.id = id; }
-        public void setDescription(String description) { this.description = description; }
-        public void setStatus(String status) { this.status = status; }
-        public void setDuration(long duration) { this.duration = duration; }
-        public void setDurationsPerDay(Map<String, Long> durationsPerDay) { this.durationsPerDay = durationsPerDay; }
-        public void setTodoItems(List<TodoItem> todoItems) { this.todoItems = todoItems; }
+        public String getDescription() {
+            return description;
+        }
+
+        public String getStatus() {
+            return status;
+        }
+
+        public long getDuration() {
+            return duration;
+        }
+
+        public Map<String, Long> getDurationsPerDay() {
+            return durationsPerDay;
+        }
+
+        public List<TodoItem> getTodoItems() {
+            return todoItems;
+        }
+
+        public void setId(String id) {
+            this.id = id;
+        }
+
+        public void setDescription(String description) {
+            this.description = description;
+        }
+
+        public void setStatus(String status) {
+            this.status = status;
+        }
+
+        public void setDuration(long duration) {
+            this.duration = duration;
+        }
+
+        public void setDurationsPerDay(Map<String, Long> durationsPerDay) {
+            this.durationsPerDay = durationsPerDay;
+        }
+
+        public void setTodoItems(List<TodoItem> todoItems) {
+            this.todoItems = todoItems;
+        }
     }
 
     static class TodoItem {
@@ -437,25 +485,47 @@ public class TimeTrackerApp extends JFrame {
             this.durationsPerDay = new HashMap<>();
         }
 
-        public void incrementDuration() {
-            duration++;
+        public void incrementDuration(long elapsedSecond) {
+            duration += elapsedSecond;
         }
 
-        public void incrementDurationForDay(String day) {
-            durationsPerDay.put(day, durationsPerDay.getOrDefault(day, 0L) + 1);
+        public void incrementDurationForDay(String day, long elapsedSecond) {
+            durationsPerDay.put(day, durationsPerDay.getOrDefault(day, 0L) + elapsedSecond);
         }
 
         // Getters et setters
 
-        public String getStatus() { return status; }
-        public String getDescription() { return description; }
-        public long getDuration() { return duration; }
-        public Map<String, Long> getDurationsPerDay() { return durationsPerDay; }
+        public String getStatus() {
+            return status;
+        }
 
-        public void setStatus(String status) { this.status = status; }
-        public void setDescription(String description) { this.description = description; }
-        public void setDuration(long duration) { this.duration = duration; }
-        public void setDurationsPerDay(Map<String, Long> durationsPerDay) { this.durationsPerDay = durationsPerDay; }
+        public String getDescription() {
+            return description;
+        }
+
+        public long getDuration() {
+            return duration;
+        }
+
+        public Map<String, Long> getDurationsPerDay() {
+            return durationsPerDay;
+        }
+
+        public void setStatus(String status) {
+            this.status = status;
+        }
+
+        public void setDescription(String description) {
+            this.description = description;
+        }
+
+        public void setDuration(long duration) {
+            this.duration = duration;
+        }
+
+        public void setDurationsPerDay(Map<String, Long> durationsPerDay) {
+            this.durationsPerDay = durationsPerDay;
+        }
     }
 
     // Renderer pour les boutons
@@ -463,6 +533,7 @@ public class TimeTrackerApp extends JFrame {
         public ButtonRenderer() {
             setOpaque(true);
         }
+
         public Component getTableCellRendererComponent(JTable table, Object value,
                                                        boolean isSelected, boolean hasFocus,
                                                        int row, int column) {
