@@ -102,9 +102,21 @@ public class TimeTrackerApp extends JFrame {
         // Split pane principal (haut et bas)
         JSplitPane mainSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, topSplitPane, bottomSplitPane);
 
+        // Checkbox to filter the tickets
+        JCheckBox jcbTicket = new JCheckBox("Hide Done Tickets");
+        jcbTicket.addActionListener(e -> {
+            updateTicketTable(jcbTicket.isSelected());
+        });
+
         // Ajouter les composants au frame
         add(mainSplitPane, BorderLayout.CENTER);
-        add(pauseButton, BorderLayout.SOUTH);
+
+        // join pauseButton and jcbTicket in a same panel
+        JPanel bottomMenu = new JPanel();
+        bottomMenu.setLayout(new FlowLayout(FlowLayout.RIGHT));
+        bottomMenu.add(pauseButton);
+        bottomMenu.add(jcbTicket);
+        add(bottomMenu, BorderLayout.SOUTH);
 
         // Ajuster les split panes
         topSplitPane.setResizeWeight(0.5);
@@ -127,9 +139,7 @@ public class TimeTrackerApp extends JFrame {
 
         // Renderer et éditeur pour les boutons Open et Delete
         ticketTable.getColumn("Open").setCellRenderer(new ButtonRenderer());
-        //ticketTable.getColumn("Open").setCellEditor(new ButtonEditor("Open"));
         ticketTable.getColumn("Delete").setCellRenderer(new ButtonRenderer());
-        //ticketTable.getColumn("Delete").setCellEditor(new ButtonEditor("Delete"));
 
         ticketTable.addMouseListener(new MouseAdapter() {
             @Override
@@ -138,6 +148,7 @@ public class TimeTrackerApp extends JFrame {
                 int col = ticketTable.columnAtPoint(e.getPoint());
 
                 if (col == 5) { // Check if "Label" column is clicked
+                    tickets.remove(row);
                     model.removeRow(row);
                 } else if (col == 4) {
                     String url = (String) model.getValueAt(row, 0);
@@ -258,7 +269,21 @@ public class TimeTrackerApp extends JFrame {
 
         // Renderer et éditeur pour le bouton Delete
         todoTable.getColumn("Delete").setCellRenderer(new ButtonRenderer());
-        //todoTable.getColumn("Delete").setCellEditor(new ButtonEditor("DeleteTodo"));
+        todoTable.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                int row = todoTable.rowAtPoint(e.getPoint());
+                int col = todoTable.columnAtPoint(e.getPoint());
+
+                if (col == 3) {
+                    int selectedTicketRow = ticketTable.getSelectedRow();
+                    if (selectedTicket != null && selectedTicketRow >= 0 && selectedTicketRow < tickets.size()) {
+                        selectedTicket.getTodoItems().remove(row);
+                        updateTodoTable();
+                    }
+                }
+            }
+        });
 
         // Renderer pour le statut
         todoTable.getColumn("Status").setCellEditor(new DefaultCellEditor(new JComboBox<>(Status.values())));
@@ -330,9 +355,18 @@ public class TimeTrackerApp extends JFrame {
     }
 
     private void updateTicketTable() {
+        updateTicketTable(false);
+    }
+
+    private void updateTicketTable(boolean hideDone) {
         DefaultTableModel model = (DefaultTableModel) ticketTable.getModel();
         model.setRowCount(0);
         for (Ticket ticket : tickets) {
+
+            if (hideDone && ticket.status == Status.Done) {
+                continue;
+            }
+
             model.addRow(new Object[]{ticket.getId(), ticket.getDescription(), ticket.getStatus(),
                     formatDuration(ticket.getDuration()), "Open", "Delete"});
         }
