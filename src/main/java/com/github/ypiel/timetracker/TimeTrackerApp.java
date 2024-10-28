@@ -10,10 +10,13 @@ import javax.swing.table.TableCellRenderer;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
@@ -25,6 +28,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 public class TimeTrackerApp extends JFrame {
 
     // Structures de données
@@ -44,8 +50,8 @@ public class TimeTrackerApp extends JFrame {
     private javax.swing.Timer durationTimer;
 
     // Chemins des fichiers
-    private static final String SAVE_DIR = System.getProperty("user.home") + "/time-tracker";
-    private static final String SAVE_FILE = SAVE_DIR + "/time-tracker.json";
+    private static final String SAVE_DIR = System.getProperty("time-tracker.dir", System.getProperty("user.home") + "/time-tracker");
+    private static final String SAVE_FILE = Paths.get(SAVE_DIR, "time-tracker.json").toString();
 
     public TimeTrackerApp() {
         setTitle("Time Tracker");
@@ -121,75 +127,112 @@ public class TimeTrackerApp extends JFrame {
 
         // Renderer et éditeur pour les boutons Open et Delete
         ticketTable.getColumn("Open").setCellRenderer(new ButtonRenderer());
-        ticketTable.getColumn("Open").setCellEditor(new ButtonEditor("Open"));
+        //ticketTable.getColumn("Open").setCellEditor(new ButtonEditor("Open"));
         ticketTable.getColumn("Delete").setCellRenderer(new ButtonRenderer());
-        ticketTable.getColumn("Delete").setCellEditor(new ButtonEditor("Delete"));
+        //ticketTable.getColumn("Delete").setCellEditor(new ButtonEditor("Delete"));
 
-        // Renderer pour le statut
-        ticketTable.getColumn("Status").setCellEditor(new DefaultCellEditor(new JComboBox<>(Status.values())));
-
-        // Listener pour ajouter un nouveau ticket en appuyant sur ENTER
-        ticketTable.getInputMap(JTable.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT)
-                .put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "AddTicket");
-
-        ticketTable.getColumnModel().getColumn(0).setCellRenderer(new DefaultTableCellRenderer(){
+        ticketTable.addMouseListener(new MouseAdapter() {
             @Override
-            public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected,
-                                                           boolean hasFocus, int row, int column) {
-                String v = (String) value;
-                if(v.startsWith("http")){
-                    int lastSegmentIndex = v.lastIndexOf('/');
+            public void mouseClicked(MouseEvent e) {
+                int row = ticketTable.rowAtPoint(e.getPoint());
+                int col = ticketTable.columnAtPoint(e.getPoint());
 
-                    v = lastSegmentIndex > 0 ? v.substring(lastSegmentIndex + 1) : v;
-                }
-
-                return super.getTableCellRendererComponent(table, v, isSelected, hasFocus, row, column);
-
-            }
-
-        });
-
-        ticketTable.getActionMap().put("AddTicket", new AbstractAction() {
-            public void actionPerformed(ActionEvent e) {
-                int row = ticketTable.getSelectedRow();
-                if (row == ticketTable.getRowCount() - 1) {
-                    String id = (String) model.getValueAt(row, 0);
-                    String description = (String) model.getValueAt(row, 1);
-                    Status status = (Status) model.getValueAt(row, 2);
-                    if (id != null && !id.trim().isEmpty()) {
-                        Ticket ticket = new Ticket(id.trim(), description != null ? description.trim() : "", status);
-                        tickets.add(ticket);
-                        model.insertRow(model.getRowCount() - 1, new Object[]{id.trim(), description, status, "00:00:00", "Open", "Delete"});
-                        model.setValueAt("", model.getRowCount() - 1, 0);
-                        model.setValueAt("", model.getRowCount() - 1, 1);
-                        model.setValueAt(Status.New, model.getRowCount() - 1, 2);
+                if (col == 5) { // Check if "Label" column is clicked
+                    model.removeRow(row);
+                } else if (col == 4) {
+                    String url = (String) model.getValueAt(row, 0);
+                    if (url != null && url.startsWith("http")) {
+                        try {
+                            Desktop.getDesktop().browse(new URI(url));
+                        } catch (Exception ex) {
+                            throw new RuntimeException("Can't open the URL in the browser: " + url, ex);
+                        }
                     }
                 }
             }
         });
 
+        // Renderer pour le statut
+        ticketTable.getColumn("Status").
+
+                setCellEditor(new DefaultCellEditor(new JComboBox<>(Status.values())));
+
+        // Listener pour ajouter un nouveau ticket en appuyant sur ENTER
+        ticketTable.getInputMap(JTable.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT)
+                        .
+
+                put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "AddTicket");
+
+        ticketTable.getColumnModel().
+
+                getColumn(0).
+
+                setCellRenderer(new DefaultTableCellRenderer() {
+                    @Override
+                    public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected,
+                                                                   boolean hasFocus, int row, int column) {
+                        String v = (String) value;
+                        if (v.startsWith("http")) {
+                            int lastSegmentIndex = v.lastIndexOf('/');
+
+                            v = lastSegmentIndex > 0 ? v.substring(lastSegmentIndex + 1) : v;
+                        }
+
+                        return super.getTableCellRendererComponent(table, v, isSelected, hasFocus, row, column);
+
+                    }
+
+                });
+
+        ticketTable.getActionMap().
+
+                put("AddTicket", new AbstractAction() {
+                    public void actionPerformed(ActionEvent e) {
+                        int row = ticketTable.getSelectedRow();
+                        if (row == ticketTable.getRowCount() - 1) {
+                            String id = (String) model.getValueAt(row, 0);
+                            String description = (String) model.getValueAt(row, 1);
+                            Status status = (Status) model.getValueAt(row, 2);
+                            if (id != null && !id.trim().isEmpty()) {
+                                Ticket ticket = new Ticket(id.trim(), description != null ? description.trim() : "", status);
+                                tickets.add(ticket);
+                                model.insertRow(model.getRowCount() - 1, new Object[]{id.trim(), description, status, "00:00:00", "Open", "Delete"});
+                                model.setValueAt("", model.getRowCount() - 1, 0);
+                                model.setValueAt("", model.getRowCount() - 1, 1);
+                                model.setValueAt(Status.New, model.getRowCount() - 1, 2);
+                            }
+                        }
+                    }
+                });
+
         // Listener de sélection pour ticketTable
-        ticketTable.getSelectionModel().addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting()) {
-                int index = ticketTable.getSelectedRow();
-                if (index >= 0 && index < tickets.size()) {
-                    selectedTicket = tickets.get(index);
-                    selectedTodo = null;
-                    updateTodoTable();
-                    updateTicketDailyDurationsTable();
-                    updateTodoDailyDurationsTable();
-                } else {
-                    selectedTicket = null;
-                    selectedTodo = null;
-                    clearTodoTable();
-                    clearTicketDailyDurationsTable();
-                    clearTodoDailyDurationsTable();
-                }
-            }
-        });
+        ticketTable.getSelectionModel().
+
+                addListSelectionListener(e ->
+
+                {
+                    if (!e.getValueIsAdjusting()) {
+                        int index = ticketTable.getSelectedRow();
+                        if (index >= 0 && index < tickets.size()) {
+                            selectedTicket = tickets.get(index);
+                            selectedTodo = null;
+                            updateTodoTable();
+                            updateTicketDailyDurationsTable();
+                            updateTodoDailyDurationsTable();
+                        } else {
+                            selectedTicket = null;
+                            selectedTodo = null;
+                            clearTodoTable();
+                            clearTicketDailyDurationsTable();
+                            clearTodoDailyDurationsTable();
+                        }
+                    }
+                });
 
         // Listener pour mettre à jour le statut du ticket
-        model.addTableModelListener(e -> {
+        model.addTableModelListener(e ->
+
+        {
             int row = e.getFirstRow();
             int column = e.getColumn();
             if (column == 2 && row >= 0 && row < tickets.size()) {
@@ -215,7 +258,7 @@ public class TimeTrackerApp extends JFrame {
 
         // Renderer et éditeur pour le bouton Delete
         todoTable.getColumn("Delete").setCellRenderer(new ButtonRenderer());
-        todoTable.getColumn("Delete").setCellEditor(new ButtonEditor("DeleteTodo"));
+        //todoTable.getColumn("Delete").setCellEditor(new ButtonEditor("DeleteTodo"));
 
         // Renderer pour le statut
         todoTable.getColumn("Status").setCellEditor(new DefaultCellEditor(new JComboBox<>(Status.values())));
@@ -410,6 +453,7 @@ public class TimeTrackerApp extends JFrame {
 
     private void saveData() {
         try {
+            log.info("Save time-tracker data to {}.", SAVE_FILE);
             Files.createDirectories(Paths.get(SAVE_DIR));
             ObjectMapper mapper = new ObjectMapper();
             mapper.writeValue(new File(SAVE_FILE), tickets);
@@ -597,59 +641,6 @@ public class TimeTrackerApp extends JFrame {
                                                        int row, int column) {
             setText((value == null) ? "" : value.toString());
             return this;
-        }
-    }
-
-    // Éditeur pour les boutons
-    class ButtonEditor extends DefaultCellEditor {
-        protected JButton button;
-        private String label;
-        private boolean isPushed;
-        private String actionType;
-
-        public ButtonEditor(String actionType) {
-            super(new JCheckBox());
-            this.actionType = actionType;
-            button = new JButton();
-            button.setOpaque(true);
-            button.addActionListener(e -> fireEditingStopped());
-        }
-
-        public Component getTableCellEditorComponent(JTable table, Object value,
-                                                     boolean isSelected, int row, int column) {
-            label = (value == null) ? "" : value.toString();
-            button.setText(label);
-            isPushed = true;
-            return button;
-        }
-
-        public Object getCellEditorValue() {
-            if (isPushed) {
-                if ("Delete".equals(actionType)) {
-                    int row = ticketTable.getSelectedRow();
-                    if (row >= 0 && row < tickets.size()) {
-                        tickets.remove(row);
-                        ((DefaultTableModel) ticketTable.getModel()).removeRow(row);
-                    }
-                } else if ("DeleteTodo".equals(actionType)) {
-                    int row = todoTable.getSelectedRow();
-                    if (selectedTicket != null && row >= 0 && row < selectedTicket.getTodoItems().size()) {
-                        selectedTicket.getTodoItems().remove(row);
-                        ((DefaultTableModel) todoTable.getModel()).removeRow(row);
-                    }
-                }
-            }
-            isPushed = false;
-            return label;
-        }
-
-        public boolean stopCellEditing() {
-            isPushed = false;
-            return super.stopCellEditing();
-        }
-
-        protected void fireEditingStopped() {
-            super.fireEditingStopped();
         }
     }
 
