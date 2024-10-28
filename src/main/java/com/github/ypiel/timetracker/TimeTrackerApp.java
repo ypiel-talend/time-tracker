@@ -110,19 +110,22 @@ public class TimeTrackerApp extends JFrame {
         DefaultTableModel model = new DefaultTableModel(columns, 0) {
             public boolean isCellEditable(int row, int column) {
                 // Permettre l'édition des colonnes ID et Description
-                return column == 0 || column == 1 || column == 4 || column == 5;
+                return column == 0 || column == 1 || column == 2 || column == 4 || column == 5;
             }
         };
         ticketTable.setModel(model);
 
         // Ajouter une ligne vide pour un nouveau ticket
-        model.addRow(new Object[]{"", "", "", "", "", ""});
+        model.addRow(new Object[]{"", "", Status.New, "", "", ""});
 
         // Renderer et éditeur pour les boutons Open et Delete
         ticketTable.getColumn("Open").setCellRenderer(new ButtonRenderer());
         ticketTable.getColumn("Open").setCellEditor(new ButtonEditor("Open"));
         ticketTable.getColumn("Delete").setCellRenderer(new ButtonRenderer());
         ticketTable.getColumn("Delete").setCellEditor(new ButtonEditor("Delete"));
+
+        // Renderer pour le statut
+        ticketTable.getColumn("Status").setCellEditor(new DefaultCellEditor(new JComboBox<>(Status.values())));
 
         // Listener pour ajouter un nouveau ticket en appuyant sur ENTER
         ticketTable.getInputMap(JTable.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT)
@@ -133,12 +136,14 @@ public class TimeTrackerApp extends JFrame {
                 if (row == ticketTable.getRowCount() - 1) {
                     String id = (String) model.getValueAt(row, 0);
                     String description = (String) model.getValueAt(row, 1);
+                    Status status = (Status) model.getValueAt(row, 2);
                     if (id != null && !id.trim().isEmpty()) {
-                        Ticket ticket = new Ticket(id.trim(), description != null ? description.trim() : "");
+                        Ticket ticket = new Ticket(id.trim(), description != null ? description.trim() : "", status);
                         tickets.add(ticket);
-                        model.insertRow(model.getRowCount() - 1, new Object[]{id.trim(), description, "", "00:00:00", "Open", "Delete"});
+                        model.insertRow(model.getRowCount() - 1, new Object[]{id.trim(), description, status, "00:00:00", "Open", "Delete"});
                         model.setValueAt("", model.getRowCount() - 1, 0);
                         model.setValueAt("", model.getRowCount() - 1, 1);
+                        model.setValueAt(Status.New, model.getRowCount() - 1, 2);
                     }
                 }
             }
@@ -163,6 +168,17 @@ public class TimeTrackerApp extends JFrame {
                 }
             }
         });
+
+        // Listener pour mettre à jour le statut du ticket
+        model.addTableModelListener(e -> {
+            int row = e.getFirstRow();
+            int column = e.getColumn();
+            if (column == 2 && row >= 0 && row < tickets.size()) {
+                Ticket ticket = tickets.get(row);
+                Status newStatus = (Status) model.getValueAt(row, column);
+                ticket.setStatus(newStatus);
+            }
+        });
     }
 
     private void setupTodoTable() {
@@ -176,11 +192,14 @@ public class TimeTrackerApp extends JFrame {
         todoTable.setModel(model);
 
         // Ajouter une ligne vide pour un nouveau todo
-        model.addRow(new Object[]{"", "", "", ""});
+        model.addRow(new Object[]{Status.New, "", "", ""});
 
         // Renderer et éditeur pour le bouton Delete
         todoTable.getColumn("Delete").setCellRenderer(new ButtonRenderer());
         todoTable.getColumn("Delete").setCellEditor(new ButtonEditor("DeleteTodo"));
+
+        // Renderer pour le statut
+        todoTable.getColumn("Status").setCellEditor(new DefaultCellEditor(new JComboBox<>(Status.values())));
 
         // Listener pour ajouter un nouveau todo en appuyant sur ENTER
         todoTable.getInputMap(JTable.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT)
@@ -189,13 +208,13 @@ public class TimeTrackerApp extends JFrame {
             public void actionPerformed(ActionEvent e) {
                 int row = todoTable.getSelectedRow();
                 if (selectedTicket != null && row == todoTable.getRowCount() - 1) {
-                    String status = (String) model.getValueAt(row, 0);
+                    Status status = (Status) model.getValueAt(row, 0);
                     String description = (String) model.getValueAt(row, 1);
                     if (description != null && !description.trim().isEmpty()) {
-                        TodoItem todo = new TodoItem(description.trim(), status != null ? status.trim() : "");
+                        TodoItem todo = new TodoItem(description.trim(), status);
                         selectedTicket.getTodoItems().add(todo);
                         model.insertRow(model.getRowCount() - 1, new Object[]{status, description, "00:00:00", "Delete"});
-                        model.setValueAt("", model.getRowCount() - 1, 0);
+                        model.setValueAt(Status.New, model.getRowCount() - 1, 0);
                         model.setValueAt("", model.getRowCount() - 1, 1);
                     }
                 }
@@ -213,6 +232,17 @@ public class TimeTrackerApp extends JFrame {
                     selectedTodo = null;
                     clearTodoDailyDurationsTable();
                 }
+            }
+        });
+
+        // Listener pour mettre à jour le statut du todo
+        model.addTableModelListener(e -> {
+            int row = e.getFirstRow();
+            int column = e.getColumn();
+            if (column == 0 && selectedTicket != null && row >= 0 && row < selectedTicket.getTodoItems().size()) {
+                TodoItem todo = selectedTicket.getTodoItems().get(row);
+                Status newStatus = (Status) model.getValueAt(row, column);
+                todo.setStatus(newStatus);
             }
         });
     }
@@ -244,7 +274,7 @@ public class TimeTrackerApp extends JFrame {
             model.addRow(new Object[]{ticket.getId(), ticket.getDescription(), ticket.getStatus(),
                     formatDuration(ticket.getDuration()), "Open", "Delete"});
         }
-        model.addRow(new Object[]{"", "", "", "", "", ""});
+        model.addRow(new Object[]{"", "", Status.New, "", "", ""});
     }
 
     private void updateTodoTable() {
@@ -254,7 +284,7 @@ public class TimeTrackerApp extends JFrame {
             for (TodoItem todo : selectedTicket.getTodoItems()) {
                 model.addRow(new Object[]{todo.getStatus(), todo.getDescription(), formatDuration(todo.getDuration()), "Delete"});
             }
-            model.addRow(new Object[]{"", "", "", ""});
+            model.addRow(new Object[]{Status.New, "", "", ""});
         }
     }
 
@@ -386,11 +416,20 @@ public class TimeTrackerApp extends JFrame {
         }
     }
 
+    // Enum pour les statuts
+    public enum Status {
+        New,
+        In_Progress,
+        On_Hold,
+        Validation,
+        Done;
+    }
+
     // Classes internes pour les modèles de données
     static class Ticket {
         private String id;
         private String description;
-        private String status;
+        private Status status;
         private long duration; // en secondes
         private Map<String, Long> durationsPerDay;
         private List<TodoItem> todoItems;
@@ -400,10 +439,10 @@ public class TimeTrackerApp extends JFrame {
             this.todoItems = new ArrayList<>();
         }
 
-        public Ticket(String id, String description) {
+        public Ticket(String id, String description, Status status) {
             this.id = id;
             this.description = description;
-            this.status = "";
+            this.status = status;
             this.duration = 0;
             this.durationsPerDay = new HashMap<>();
             this.todoItems = new ArrayList<>();
@@ -427,7 +466,7 @@ public class TimeTrackerApp extends JFrame {
             return description;
         }
 
-        public String getStatus() {
+        public Status getStatus() {
             return status;
         }
 
@@ -451,7 +490,7 @@ public class TimeTrackerApp extends JFrame {
             this.description = description;
         }
 
-        public void setStatus(String status) {
+        public void setStatus(Status status) {
             this.status = status;
         }
 
@@ -469,7 +508,7 @@ public class TimeTrackerApp extends JFrame {
     }
 
     static class TodoItem {
-        private String status;
+        private Status status;
         private String description;
         private long duration; // en secondes
         private Map<String, Long> durationsPerDay;
@@ -478,7 +517,7 @@ public class TimeTrackerApp extends JFrame {
             this.durationsPerDay = new HashMap<>();
         }
 
-        public TodoItem(String description, String status) {
+        public TodoItem(String description, Status status) {
             this.description = description;
             this.status = status;
             this.duration = 0;
@@ -495,7 +534,7 @@ public class TimeTrackerApp extends JFrame {
 
         // Getters et setters
 
-        public String getStatus() {
+        public Status getStatus() {
             return status;
         }
 
@@ -511,7 +550,7 @@ public class TimeTrackerApp extends JFrame {
             return durationsPerDay;
         }
 
-        public void setStatus(String status) {
+        public void setStatus(Status status) {
             this.status = status;
         }
 
