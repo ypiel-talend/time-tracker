@@ -46,6 +46,9 @@ public class TimeTrackerApp extends JFrame {
     private JTable todoDailyDurationsTable;
     private JButton pauseButton;
 
+    private JCheckBox jcbTicket;
+    private JCheckBox jcbTodo;
+
     // Timers
     private javax.swing.Timer durationTimer;
 
@@ -103,9 +106,17 @@ public class TimeTrackerApp extends JFrame {
         JSplitPane mainSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, topSplitPane, bottomSplitPane);
 
         // Checkbox to filter the tickets
-        JCheckBox jcbTicket = new JCheckBox("Hide Done Tickets");
+        jcbTicket = new JCheckBox("Hide Done Tickets");
+        jcbTicket.setSelected(true);
         jcbTicket.addActionListener(e -> {
-            updateTicketTable(jcbTicket.isSelected());
+            updateTicketTable();
+        });
+
+        // Checkbox to filter the todos
+        jcbTodo = new JCheckBox("Hide Done Todos");
+        jcbTodo.setSelected(true);
+        jcbTodo.addActionListener(e -> {
+            updateTodoTable();
         });
 
         // Ajouter les composants au frame
@@ -116,6 +127,7 @@ public class TimeTrackerApp extends JFrame {
         bottomMenu.setLayout(new FlowLayout(FlowLayout.RIGHT));
         bottomMenu.add(pauseButton);
         bottomMenu.add(jcbTicket);
+        bottomMenu.add(jcbTodo);
         add(bottomMenu, BorderLayout.SOUTH);
 
         // Ajuster les split panes
@@ -355,15 +367,11 @@ public class TimeTrackerApp extends JFrame {
     }
 
     private void updateTicketTable() {
-        updateTicketTable(false);
-    }
-
-    private void updateTicketTable(boolean hideDone) {
         DefaultTableModel model = (DefaultTableModel) ticketTable.getModel();
         model.setRowCount(0);
         for (Ticket ticket : tickets) {
 
-            if (hideDone && ticket.status == Status.Done) {
+            if (jcbTicket.isSelected() && ticket.status == Status.Done) {
                 continue;
             }
 
@@ -378,6 +386,9 @@ public class TimeTrackerApp extends JFrame {
         model.setRowCount(0);
         if (selectedTicket != null) {
             for (TodoItem todo : selectedTicket.getTodoItems()) {
+                if (jcbTodo.isSelected() && todo.status == Status.Done) {
+                    continue;
+                }
                 model.addRow(new Object[]{todo.getStatus(), todo.getDescription(), formatDuration(todo.getDuration()), "Delete"});
             }
             model.addRow(new Object[]{Status.New, "", "", ""});
