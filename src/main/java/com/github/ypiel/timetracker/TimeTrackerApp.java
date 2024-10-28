@@ -6,9 +6,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import javax.swing.*;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
+import javax.swing.table.TableCellEditor;
 import javax.swing.table.TableCellRenderer;
+import javax.swing.table.TableModel;
+import javax.swing.table.TableRowSorter;
 import java.awt.*;
 import java.awt.event.ActionEvent;
+import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -23,9 +27,11 @@ import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
 import lombok.Data;
@@ -33,13 +39,13 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class TimeTrackerApp extends JFrame {
-    //private final static int TICKET_TABLE_COLUMN_ORDER = 0;
-    private final static int TICKET_TABLE_COLUMN_ID = 0;
-    private final static int TICKET_TABLE_COLUMN_DESC = 1;
-    private final static int TICKET_TABLE_COLUMN_STATUS = 2;
-    private final static int TICKET_TABLE_COLUMN_DURATION = 3;
-    private final static int TICKET_TABLE_COLUMN_OPEN = 4;
-    private final static int TICKET_TABLE_COLUMN_DELETE = 5;
+    private final static int TICKET_TABLE_COLUMN_ORDER = 0;
+    private final static int TICKET_TABLE_COLUMN_ID = 1;
+    private final static int TICKET_TABLE_COLUMN_DESC = 2;
+    private final static int TICKET_TABLE_COLUMN_STATUS = 3;
+    private final static int TICKET_TABLE_COLUMN_DURATION = 4;
+    private final static int TICKET_TABLE_COLUMN_OPEN = 5;
+    private final static int TICKET_TABLE_COLUMN_DELETE = 6;
 
     private final static int TODO_TABLE_COLUMN_STATUS = 0;
     private final static int TODO_TABLE_COLUMN_DESC = 1;
@@ -150,11 +156,12 @@ public class TimeTrackerApp extends JFrame {
     }
 
     private void setupTicketTable() {
-        String[] columns = {"ID", "Description", "Status", "Duration", "Open", "Delete"};
+        String[] columns = {"Order", "ID", "Description", "Status", "Duration", "Open", "Delete"};
         DefaultTableModel model = new DefaultTableModel(columns, 0) {
             public boolean isCellEditable(int row, int column) {
                 // Permettre l'édition des colonnes ID et Description
-                return column == TICKET_TABLE_COLUMN_ID || column == TICKET_TABLE_COLUMN_DESC ||
+                return column == TICKET_TABLE_COLUMN_ORDER ||
+                        column == TICKET_TABLE_COLUMN_ID || column == TICKET_TABLE_COLUMN_DESC ||
                         column == TICKET_TABLE_COLUMN_STATUS || column == TICKET_TABLE_COLUMN_OPEN ||
                         column == TICKET_TABLE_COLUMN_DELETE;
             }
@@ -162,7 +169,9 @@ public class TimeTrackerApp extends JFrame {
         ticketTable.setModel(model);
 
         // Ajouter une ligne vide pour un nouveau ticket
-        model.addRow(new Object[]{"", "", Status.New, "", "", ""});
+        model.addRow(new Object[]{0, "", "", Status.New, "", "", ""});
+
+        ticketTable.getColumnModel().getColumn(TICKET_TABLE_COLUMN_ORDER).setCellEditor(new IntegerEditor());
 
         // Renderer et éditeur pour les boutons Open et Delete
         ticketTable.getColumn("Open").setCellRenderer(new ButtonRenderer());
@@ -171,14 +180,19 @@ public class TimeTrackerApp extends JFrame {
         ticketTable.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-                int row = ticketTable.rowAtPoint(e.getPoint());
+                int row = ticketTable.convertRowIndexToModel(ticketTable.rowAtPoint(e.getPoint()));
                 int col = ticketTable.columnAtPoint(e.getPoint());
 
+                String toRemove = (String) model.getValueAt(row, TICKET_TABLE_COLUMN_ID);
+
                 if (col == TICKET_TABLE_COLUMN_DELETE) { // Check if "Label" column is clicked
-                    tickets.remove(row);
-                    model.removeRow(row);
+                    tickets.stream().filter(t -> t.getId().equals(toRemove)).findAny().ifPresent(o -> {
+                        tickets.remove(o);
+                        model.removeRow(row);
+                    });
+
                 } else if (col == TICKET_TABLE_COLUMN_OPEN) {
-                    String url = (String) model.getValueAt(row, 0);
+                    String url = (String) model.getValueAt(row, TICKET_TABLE_COLUMN_ID);
                     if (url != null && url.startsWith("http")) {
                         try {
                             Desktop.getDesktop().browse(new URI(url));
@@ -218,31 +232,60 @@ public class TimeTrackerApp extends JFrame {
 
                 put("AddTicket", new AbstractAction() {
                     public void actionPerformed(ActionEvent e) {
-                        int row = ticketTable.getSelectedRow();
-                        if (row == ticketTable.getRowCount() - 1) {
-                            String id = (String) model.getValueAt(row, TICKET_TABLE_COLUMN_ID);
-                            String description = (String) model.getValueAt(row, TICKET_TABLE_COLUMN_DESC);
-                            Status status = (Status) model.getValueAt(row, TICKET_TABLE_COLUMN_STATUS);
-                            if (id != null && !id.trim().isEmpty()) {
-                                Ticket ticket = new Ticket(id.trim(), description != null ? description.trim() : "", status);
-                                tickets.add(ticket);
-                                model.insertRow(model.getRowCount() - 1, new Object[]{id.trim(), description, status, "00:00:00", "Open", "Delete"});
-                                model.setValueAt("", model.getRowCount() - 1, 0);
-                                model.setValueAt("", model.getRowCount() - 1, 1);
-                                model.setValueAt(Status.New, model.getRowCount() - 1, 2);
-                            }
+                        int row = ticketTable.convertRowIndexToModel(ticketTable.getSelectedRow());
+
+                        // if (row == ticketTable.getRowCount() - 1) {
+                        int order = (Integer) model.getValueAt(row, TICKET_TABLE_COLUMN_ORDER);
+
+                        if (order <= 0) {
+                            JOptionPane.showMessageDialog(null, "Ticket order must be higher than 0.", "Warning", JOptionPane.WARNING_MESSAGE);
+                            return;
                         }
+
+                        String id = (String) model.getValueAt(row, TICKET_TABLE_COLUMN_ID);
+                        String description = (String) model.getValueAt(row, TICKET_TABLE_COLUMN_DESC);
+                        Status status = (Status) model.getValueAt(row, TICKET_TABLE_COLUMN_STATUS);
+
+                        if (id != null && !id.trim().isEmpty() && row == ticketTable.getRowCount() - 1) {
+                            Optional<Ticket> exists = tickets.stream().filter(t -> t.getId().equals(id)).findAny();
+                            if (exists.isPresent()) {
+                                JOptionPane.showMessageDialog(null, "Ticket with ID " + id + " already exists.", "Warning", JOptionPane.WARNING_MESSAGE);
+                                return;
+                            }
+
+
+                            Ticket ticket = new Ticket(order, id.trim(), description != null ? description.trim() : "", status);
+                            tickets.add(ticket);
+                            model.insertRow(model.getRowCount() - 1, new Object[]{order, id.trim(), description, status, "00:00:00", "Open", "Delete"});
+                            model.setValueAt(0, model.getRowCount() - 1, TICKET_TABLE_COLUMN_ORDER);
+                            model.setValueAt("", model.getRowCount() - 1, TICKET_TABLE_COLUMN_ID);
+                            model.setValueAt("", model.getRowCount() - 1, TICKET_TABLE_COLUMN_DESC);
+                            model.setValueAt(Status.New, model.getRowCount() - 1, TICKET_TABLE_COLUMN_STATUS);
+                        } else {
+                            Ticket selected = tickets.get(row);
+
+                            if (!id.equals(selected.getId())) {
+                                Optional<Ticket> exists = tickets.stream().filter(t -> t.getId().equals(id)).findAny();
+                                if (exists.isPresent()) {
+                                    JOptionPane.showMessageDialog(null, "Ticket with ID " + id + " already exists.", "Warning", JOptionPane.WARNING_MESSAGE);
+                                    return;
+                                }
+                            }
+
+                            selected.setOrder(order);
+                            selected.setId(id);
+                            selected.setDescription(description);
+                            selected.setStatus(status);
+                        }
+                        //}
                     }
                 });
 
         // Listener de sélection pour ticketTable
         ticketTable.getSelectionModel().
-
-                addListSelectionListener(e ->
-
-                {
+                addListSelectionListener(e -> {
                     if (!e.getValueIsAdjusting()) {
-                        int index = ticketTable.getSelectedRow();
+                        int index = ticketTable.convertRowIndexToModel(ticketTable.getSelectedRow());
                         if (index >= 0 && index < tickets.size()) {
                             selectedTicket = tickets.get(index);
                             selectedTodo = null;
@@ -380,10 +423,15 @@ public class TimeTrackerApp extends JFrame {
                 continue;
             }
 
-            model.addRow(new Object[]{ticket.getId(), ticket.getDescription(), ticket.getStatus(),
+            model.addRow(new Object[]{ticket.getOrder(), ticket.getId(), ticket.getDescription(), ticket.getStatus(),
                     formatDuration(ticket.getDuration()), "Open", "Delete"});
         }
-        model.addRow(new Object[]{"", "", Status.New, "", "", ""});
+        model.addRow(new Object[]{0, "", "", Status.New, "", "", ""});
+
+        TableRowSorter<TableModel> sorter = new TableRowSorter<>(ticketTable.getModel());
+        sorter.setComparator(0, Comparator.comparingInt((Integer o) -> o));
+
+        ticketTable.setRowSorter(sorter);
     }
 
     private void updateTodoTable() {
@@ -517,6 +565,7 @@ public class TimeTrackerApp extends JFrame {
     }
 
     private void loadData() {
+        log.info("time-tracker data loaded from {}.", SAVE_FILE);
         File file = new File(SAVE_FILE);
         if (file.exists()) {
             try {
@@ -541,6 +590,7 @@ public class TimeTrackerApp extends JFrame {
     // Classes internes pour les modèles de données
     @Data
     static class Ticket {
+        private int order = 0;
         private String id;
         private String description;
         private Status status;
@@ -553,7 +603,8 @@ public class TimeTrackerApp extends JFrame {
             this.todoItems = new ArrayList<>();
         }
 
-        public Ticket(String id, String description, Status status) {
+        public Ticket(int order, String id, String description, Status status) {
+            this.order = order;
             this.id = id;
             this.description = description;
             this.status = status;
@@ -601,7 +652,7 @@ public class TimeTrackerApp extends JFrame {
     }
 
     // Renderer pour les boutons
-    class ButtonRenderer extends JButton implements TableCellRenderer {
+    static class ButtonRenderer extends JButton implements TableCellRenderer {
         public ButtonRenderer() {
             setOpaque(true);
         }
@@ -611,6 +662,38 @@ public class TimeTrackerApp extends JFrame {
                                                        int row, int column) {
             setText((value == null) ? "" : value.toString());
             return this;
+        }
+    }
+
+    static class IntegerEditor extends AbstractCellEditor implements TableCellEditor {
+        private final JTextField textField = new JTextField();
+
+        public IntegerEditor() {
+            // Listen for key input to allow only numbers
+            textField.addKeyListener(new KeyAdapter() {
+                @Override
+                public void keyTyped(KeyEvent e) {
+                    char c = e.getKeyChar();
+                    if (!Character.isDigit(c)) {
+                        e.consume();
+                    }
+                }
+            });
+        }
+
+        @Override
+        public Object getCellEditorValue() {
+            try {
+                return Integer.parseInt(textField.getText());
+            } catch (NumberFormatException e) {
+                return 0;
+            }
+        }
+
+        @Override
+        public Component getTableCellEditorComponent(JTable table, Object value, boolean isSelected, int row, int column) {
+            textField.setText(value != null ? value.toString() : "");
+            return textField;
         }
     }
 
