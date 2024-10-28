@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import javax.swing.*;
+import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableCellRenderer;
 import java.awt.*;
@@ -130,6 +131,24 @@ public class TimeTrackerApp extends JFrame {
         // Listener pour ajouter un nouveau ticket en appuyant sur ENTER
         ticketTable.getInputMap(JTable.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT)
                 .put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "AddTicket");
+
+        ticketTable.getColumnModel().getColumn(0).setCellRenderer(new DefaultTableCellRenderer(){
+            @Override
+            public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected,
+                                                           boolean hasFocus, int row, int column) {
+                String v = (String) value;
+                if(v.startsWith("http")){
+                    int lastSegmentIndex = v.lastIndexOf('/');
+
+                    v = lastSegmentIndex > 0 ? v.substring(lastSegmentIndex + 1) : v;
+                }
+
+                return super.getTableCellRendererComponent(table, v, isSelected, hasFocus, row, column);
+
+            }
+
+        });
+
         ticketTable.getActionMap().put("AddTicket", new AbstractAction() {
             public void actionPerformed(ActionEvent e) {
                 int row = ticketTable.getSelectedRow();
